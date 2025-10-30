@@ -1,5 +1,7 @@
+# app.py - DÜZELTİLMİŞ VERSİYON
 import os
 import re
+import time  # EKLENDİ: Zaman için
 import urllib3
 import warnings
 from flask import Flask, render_template, request, redirect, url_for, session, send_file, flash, abort
@@ -7,6 +9,7 @@ from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from io import StringIO
 import requests
+from functools import wraps  # EKLENDİ: Decorator'lar için
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 warnings.filterwarnings('ignore')
@@ -29,6 +32,7 @@ class SiteStatus(db.Model):
     is_active = db.Column(db.Boolean, default=True)
     message = db.Column(db.Text, default="Sistem aktif.")
 
+# Veritabanı Oluştur (app context içinde)
 with app.app_context():
     db.create_all()
     if not User.query.filter_by(username='admin').first():
@@ -95,8 +99,8 @@ class M3UGenerator:
     def get_m3u(self):
         return self.m3u_content
 
+# Decorator'lar
 def login_required(f):
-    from functools import wraps
     @wraps(f)
     def decorated(*args, **kwargs):
         if 'user_id' not in session: return redirect(url_for('login'))
@@ -104,7 +108,6 @@ def login_required(f):
     return decorated
 
 def admin_required(f):
-    from functools import wraps
     @wraps(f)
     def decorated(*args, **kwargs):
         if 'user_id' not in session: return redirect(url_for('login'))
@@ -113,6 +116,7 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated
 
+# Rotalar
 @app.route('/')
 def index():
     status = SiteStatus.query.first()
