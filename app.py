@@ -1,10 +1,10 @@
-# app.py - KİŞİYE ÖZEL M3U + SÜRE + ADMIN
+# app.py - DÜZELTİLMİŞ (f-string hatası yok)
 import os
 import re
 import random
 import string
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, redirect, url_for, flash, abort, send_file
+from flask import Flask, render_template, request, redirect, url_for, flash, abort, send_file, session
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from io import BytesIO
@@ -29,7 +29,6 @@ class User(db.Model):
 
 with app.app_context():
     db.create_all()
-    # Admin oluştur
     if not User.query.filter_by(username='admin').first():
         admin = User(
             username='admin',
@@ -53,29 +52,36 @@ class M3UGenerator:
             r = self.session.get(url, timeout=15, verify=False)
             r.raise_for_status()
             return r.text
-        except: return None
+        except:
+            return None
 
-    def generate(self, domain):
+    def generate(self):
         main_url = "https://seep.eu.org/https://www.selcuksportshd.is/"
         html = self.get_html(main_url)
-        if not html: return False
+        if not html:
+            return False, "Ana sayfa yüklenemedi."
 
         domain_match = re.search(r'href=["\'](https?://[^"\']*selcuksportshd[^"\']+)["\']', html)
-        if not domain_match: return False
+        if not domain_match:
+            return False, "Domain bulunamadı."
         active_domain = domain_match.group(1)
 
         domain_html = self.get_html(active_domain)
-        if not domain_html: return False
+        if not domain_html:
+            return False, "Domain sayfası yüklenemedi."
 
         player_match = re.search(r'data-url="(https?://[^"]+id=[^"]+)"', domain_html)
-        if not player_match: return False
+        if not player_match:
+            return False, "Player URL bulunamadı."
         player_url = player_match.group(1)
 
         player_html = self.get_html(player_url)
-        if not player_html: return False
+        if not player_html:
+            return False, "Player sayfası yüklenemedi."
 
         base_match = re.search(r'this\.baseStreamUrl\s*=\s*[\'"](https://[^\'"]+)[\'"]', player_html)
-        if not base_match: return False
+        if not base_match:
+            return False, "Base stream bulunamadı."
         base = base_match.group(1)
 
         channels = [
@@ -91,4 +97,57 @@ class M3UGenerator:
 
         for name, cid in channels:
             url = f"{base}{cid}/playlist.m3u8"
-            self.m3u += f'#EXTINF:-1 tvg-logo="https://i.hizliresim.com/b6xqz10.jpg" group-title="TÜR
+            self.m3u += f'#EXTINF:-1 tvg-logo="https://i.hizliresim.com/b6xqz10.jpg" group-title="TÜRKIYE",{name} HD\n'
+            self.m3u += f'#EXTVLCOPT:http-referrer={active_domain}\n'
+            self.m3u += f'{url}\n\n'
+
+        return True, active_domain
+
+    def get_buffer(self):
+        buffer = BytesIO()
+        buffer.write(self.m3u.encode('utf-8'))
+        buffer.seek(0)
+        return buffer
+
+# DECORATORS
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        user_id = session.get('user_id')
+        if not user_id:
+            return redirect(url_for('login'))
+        user = User.query.get(user_id)
+        if not user or not user.is_admin:
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated
+
+from functools import wraps  # <-- EKLENDİ!
+
+# ROTALAR
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        user = User.query.filter_by(username=username).first()
+        if user and check_password_hash(user.password, password):
+            session['user_id'] = user.id
+            if user.is_admin:
+                return redirect(url_for('admin_panel'))
+            return redirect(url_for('user_panel', token=user.token))
+        flash('Geçersiz giriş!')
+    return render_template('login.html')
+
+@app.route('/u/<token>')
+def user_panel(token):
+    user = User.query.filter_by(token=token).first_or_404()
+    if datetime.utcnow() > user.expires_at:
+        return render_template('expired.html', username=user.username), 403
+    return render_template('user.html', user=user)
+
+@app.route('/playlist/<token
