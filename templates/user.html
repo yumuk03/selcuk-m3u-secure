@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<html><head><title>Hoş Geldin {{ user.username }}</title><style>body{background:#0f0f23;color:#fff;text-align:center;padding:50px}h1{color:#0f0}.link{background:#111;padding:15px;border-radius:10px;font-family:monospace;margin:20px auto;max-width:90%;word-break:break-all}.btn{background:#ff0055;color:#fff;padding:12px 30px;border-radius:50px;text-decoration:none}</style></head><body>
+<h1>Hoş Geldin {{ user.username }}!</h1>
+<p><strong>Süre Bitiş:</strong> {{ user.expires_at.strftime('%d.%m.%Y %H:%M') }}</p>
+<p>IPTV uygulamana şu linki yapıştır:</p>
+<div class="link" id="link">https://{{ request.host }}/playlist/{{ user.token }}</div>
+<button class="btn" onclick="copy()">KOPYALA</button>
+<script>function copy(){navigator.clipboard.writeText(document.getElementById('link').textContent);alert('Kopyalandı!')}</script>
+<br><br><a href="/logout">Çıkış</a>
+</body></html>
