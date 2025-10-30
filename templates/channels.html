@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Kanallar - Linkler</title>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; background: #1e3c72; color: white; text-align: center; padding: 20px; }
+    .container { max-width: 800px; margin: auto; background: rgba(0,0,0,0.4); padding: 30px; border-radius: 20px; }
+    h1 { font-size: 2.2em; margin-bottom: 20px; }
+    .channel { background: #2a5298; margin: 15px 0; padding: 15px; border-radius: 12px; text-align: left; }
+    .name { font-weight: bold; font-size: 1.1em; margin-bottom: 8px; }
+    .link { background: #000; color: #0f0; padding: 10px; border-radius: 8px; word-break: break-all; font-family: monospace; }
+    .copy-btn { background: #ff6b6b; color: white; border: none; padding: 8px 15px; margin-top: 8px; border-radius: 8px; cursor: pointer; }
+    .copy-btn:hover { background: #ff5252; }
+    .back { margin-top: 30px; }
+    .back a { color: #a0d8ff; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>KANALLAR - DIREKT LINKLER</h1>
+    <p>Linki kopyala → VLC veya IPTV uygulamasına yapıştır</p>
+
+    {% if channels|length == 0 %}
+      <p style="color:#ff6b6b;">Kanallar yüklenemedi. Lütfen daha sonra tekrar deneyin.</p>
+    {% else %}
+      {% for name, url in channels %}
+        <div class="channel">
+          <div class="name">{{ name }}</div>
+          <div class="link" id="link-{{ loop.index }}">{{ url }}</div>
+          <button class="copy-btn" onclick="copyLink('link-{{ loop.index }}')">Kopyala</button>
+        </div>
+      {% endfor %}
+    {% endif %}
+
+    <div class="back">
+      <a href="/">Ana Sayfa</a> | <a href="/logout">Çıkış Yap</a>
+    </div>
+  </div>
+
+  <script>
+    function copyLink(id) {
+      const link = document.getElementById(id);
+      navigator.clipboard.writeText(link.textContent).then(() => {
+        alert("Link kopyalandı: " + link.textContent.substring(0, 50) + "...");
+      });
+    }
+  </script>
+</body>
+</html>
