@@ -1,53 +1,94 @@
-# app.py - TEK M3U + TELEGRAM BOT (ÇALIŞIR)
+# app.py - KİŞİYE ÖZEL M3U + SÜRE + ADMIN
 import os
 import re
-import urllib3
-import warnings
-import threading
-from flask import Flask, render_template, request, redirect, url_for, session, flash, abort, send_file
+import random
+import string
+from datetime import datetime, timedelta
+from flask import Flask, render_template, request, redirect, url_for, flash, abort, send_file
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from io import BytesIO
 import requests
-from functools import wraps
-from telegram.ext import Application, CommandHandler
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
-
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-warnings.filterwarnings('ignore')
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'DeaTHLesS_Secret_2025!'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
-
-# TELEGRAM TOKEN
-TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
-if not TELEGRAM_TOKEN:
-    print("TELEGRAM_TOKEN EKSİK! Render Environment'a ekle.")
 
 # MODELLER
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(200), nullable=False)
+    token = db.Column(db.String(20), unique=True, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
     is_admin = db.Column(db.Boolean, default=False)
-    telegram_id = db.Column(db.Integer, unique=True)
-
-class SiteStatus(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    is_active = db.Column(db.Boolean, default=True)
-    message = db.Column(db.Text, default="Sistem aktif.")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 with app.app_context():
     db.create_all()
+    # Admin oluştur
     if not User.query.filter_by(username='admin').first():
-        admin = User(username='admin', password=generate_password_hash('DeaTHLesS2025'), is_admin=True)
+        admin = User(
+            username='admin',
+            password=generate_password_hash('DeaTHLesS2025'),
+            token=''.join(random.choices(string.ascii_letters + string.digits, k=12)),
+            expires_at=datetime.utcnow() + timedelta(days=365),
+            is_admin=True
+        )
         db.session.add(admin)
         db.session.commit()
-    if not SiteStatus.query.first():
-        status = SiteStatus(is_active=True, message="Sistem aktif.")
-        db.session.add(status
+
+# M3U ÜRETİCİ
+class M3UGenerator:
+    def __init__(self):
+        self.m3u = "#EXTM3U\n"
+        self.session = requests.Session()
+        self.session.headers.update({'User-Agent': 'Mozilla/5.0'})
+
+    def get_html(self, url):
+        try:
+            r = self.session.get(url, timeout=15, verify=False)
+            r.raise_for_status()
+            return r.text
+        except: return None
+
+    def generate(self, domain):
+        main_url = "https://seep.eu.org/https://www.selcuksportshd.is/"
+        html = self.get_html(main_url)
+        if not html: return False
+
+        domain_match = re.search(r'href=["\'](https?://[^"\']*selcuksportshd[^"\']+)["\']', html)
+        if not domain_match: return False
+        active_domain = domain_match.group(1)
+
+        domain_html = self.get_html(active_domain)
+        if not domain_html: return False
+
+        player_match = re.search(r'data-url="(https?://[^"]+id=[^"]+)"', domain_html)
+        if not player_match: return False
+        player_url = player_match.group(1)
+
+        player_html = self.get_html(player_url)
+        if not player_html: return False
+
+        base_match = re.search(r'this\.baseStreamUrl\s*=\s*[\'"](https://[^\'"]+)[\'"]', player_html)
+        if not base_match: return False
+        base = base_match.group(1)
+
+        channels = [
+            ("BEIN 1", "selcukbeinsports1"), ("BEIN 2", "selcukbeinsports2"),
+            ("BEIN 3", "selcukbeinsports3"), ("BEIN 4", "selcukbeinsports4"),
+            ("BEIN 5", "selcukbeinsports5"), ("MAX 1", "selcukbeinsportsmax1"),
+            ("MAX 2", "selcukbeinsportsmax2"), ("S SPORT", "selcukssport"),
+            ("S SPORT 2", "selcukssport2"), ("SMART", "selcuksmartspor"),
+            ("SMART 2", "selcuksmartspor2"), ("TIVIBU 1", "selcuktivibuspor1"),
+            ("TIVIBU 2", "selcuktivibuspor2"), ("TIVIBU 3", "selcuktivibuspor3"),
+            ("TIVIBU 4", "selcuktivibuspor4")
+        ]
+
+        for name, cid in channels:
+            url = f"{base}{cid}/playlist.m3u8"
+            self.m3u += f'#EXTINF:-1 tvg-logo="https://i.hizliresim.com/b6xqz10.jpg" group-title="TÜR
