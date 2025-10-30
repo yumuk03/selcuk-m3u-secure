@@ -1,1 +1,19 @@
-<!DOCTYPE html><html><head><meta charset="utf-8"><title>Admin</title><style>body{background:#000;color:#0f0;font-family:monospace;padding:20px}.card{background:#111;padding:20px;border:1px solid #0f0;border-radius:10px;max-width:600px;margin:auto}button{background:#0f0;color:#000;padding:10px 20px;margin:10px}</style></head><body><div class="card"><h2>ADMIN</h2><p>Durum: {% if status.is_active %}AKTİF{% else %}KAPALI{% endif %}</p><form method="post" action="/admin/toggle"><textarea name="message" style="width:100%;height:80px;background:#222;color:#0f0;border:1px solid #0f0">{{ status.message }}</textarea><br><button>{% if status.is_active %}KAPAT{% else %}AÇ{% endif %}</button></form><br><a href="/" style="color:#0f0">Ana Sayfa</a></div></body></html>
+<!DOCTYPE html>
+<html><head><title>Admin Panel</title><style>body{background:#111;color:#fff;padding:20px;font-family:Arial}table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:10px;text-align:center}th{background:#222}.btn{background:#ff0055;color:#fff;padding:8px 15px;border:none;border-radius:20px;text-decoration:none}</style></head><body>
+<h2>Admin Panel - Üyeler</h2>
+<form method="post" action="/admin/add">
+  <input name="username" placeholder="Kullanıcı adı" required>
+  <input name="password" type="password" placeholder="Şifre" required>
+  <input name="days" type="number" placeholder="Gün (örn: 30)" value="30" required>
+  <button type="submit" class="btn">EKLE</button>
+</form>
+<table><tr><th>Kullanıcı</th><th>Token</th><th>Süre Bitiş</th><th>Link</th><th>Uzat</th></tr>
+{% for u in users %}{% if not u.is_admin %}
+<tr><td>{{ u.username }}</td><td>{{ u.token }}</td><td>{{ u.expires_at.strftime('%d.%m.%Y %H:%M') }}</td>
+<td><a href="/u/{{ u.token }}" target="_blank">Aç</a></td>
+<td><form method="post" action="/admin/extend/{{ u.id }}" style="display:inline">
+  <input name="days" size="3" value="7">
+  <button class="btn">+Gün</button>
+</form></td></tr>{% endif %}{% endfor %}</table>
+<br><a href="/logout">Çıkış</a>
+</body></html>
