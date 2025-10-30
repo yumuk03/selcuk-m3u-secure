@@ -1,16 +1,17 @@
-# app.py - 502 HATASI DÜZELTİLMİŞ TELEGRAM BOT
+# app.py - POLLING-ONLY TELEGRAM BOT (502 ÇÖZÜLDÜ)
 import os
 import re
 import urllib3
 import warnings
 import threading
-from flask import Flask, render_template, request, redirect, url_for, session, flash, abort, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, flash, abort
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 import requests
 from functools import wraps
+from telegram.ext import Application, CommandHandler
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import ContextTypes
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 warnings.filterwarnings('ignore')
@@ -22,10 +23,10 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# TELEGRAM TOKEN
+# TELEGRAM TOKEN (Render Environment'dan al)
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 if not TELEGRAM_TOKEN:
-    app.logger.error("TELEGRAM_TOKEN environment variable'ı eksik! Render'da ekle.")
+    app.logger.error("TELEGRAM_TOKEN EKLE! Render Environment Variables'a git.")
 
 # MODELLER
 class User(db.Model):
@@ -104,9 +105,9 @@ class M3UGenerator:
     def get_channels(self):
         return self.channels
 
-# BOT HANDLER'LAR (v20+ uyumlu)
+# BOT HANDLER'LAR (Polling için async)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Merhaba! /login <user> <pass> ile giriş yap.\n/register <user> <pass> ile kayıt ol.\n/channels ile linkleri al.")
+    await update.message.reply_text("Hoş geldin! /login <user> <pass> ile giriş yap.\n/register <user> <pass> ile kayıt ol.\n/channels ile linkleri al.")
 
 async def login_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) != 2:
@@ -117,9 +118,9 @@ async def login_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user and check_password_hash(user.password, password):
         user.telegram_id = update.effective_user.id
         db.session.commit()
-        await update.message.reply_text(f"Başarılı! /channels ile linkleri al.")
+        await update.message.reply_text(f"Giriş başarılı! /channels dene.")
     else:
-        await update.message.reply_text("Hatalı giriş! /register dene.")
+        await update.message.reply_text("Hatalı! /register dene.")
 
 async def register_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) != 2:
@@ -151,7 +152,7 @@ async def channels_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     channels = generator.get_channels()
-    msg = "📺 KANALLAR:\n\n"
+    msg = "📺 SELCUKEPORT KANALLARI:\n\n"
     for name, url in channels:
         msg += f"🔗 {name}\n{url}\n\n"
     await update.message.reply_text(msg)
@@ -186,7 +187,7 @@ async def admin_open(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.session.commit()
     await update.message.reply_text("Site AÇILDI!")
 
-# BOT UYGULAMASI
+# BOT SETUP (Polling)
 application = None
 def setup_bot():
     global application
@@ -203,20 +204,7 @@ def setup_bot():
     application.add_handler(CommandHandler("admin_open", admin_open))
     return application
 
-# WEBHOOK ROTASI (DÜZELTİLDİ - Hemen 200 döner)
-@app.route('/webhook', methods=['POST'])
-async def webhook():
-    if not application:
-        return jsonify({"error": "Bot yok"}), 500
-    try:
-        update = Update.de_json(request.get_json(force=True), application.bot)
-        await application.process_update(update)
-        return "OK", 200  # HEMEN 200 - 502'i önler
-    except Exception as e:
-        app.logger.error(f"Webhook hatası: {e}")
-        return "Error", 500
-
-# DECORATORS VE WEB ROTALAR (Önceki gibi, kısalttım)
+# WEB ROTALARI (Önceki gibi, kısalttım)
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -240,8 +228,6 @@ def index():
         return render_template('closed.html', message=getattr(status, 'message', 'Site kapalı.'))
     return render_template('home.html')
 
-# Diğer web rotaları (login, register, logout, channels, admin) önceki kod gibi - kısalttım, istersen tam veririm
-
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -254,18 +240,65 @@ def login():
         flash('Hatalı!')
     return render_template('login.html')
 
-# ... (register, logout, channels, admin rotaları önceki gibi)
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        if User.query.filter_by(username=username).first():
+            flash('Alınmış!')
+        else:
+            user = User(username=username, password=generate_password_hash(password))
+            db.session.add(user)
+            db.session.commit()
+            flash('Kayıt OK!')
+            return redirect(url_for('login'))
+    return render_template('register.html')
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+@app.route('/channels')
+@login_required
+def channels():
+    status = SiteStatus.query.first()
+    if not status or not status.is_active:
+        return render_template('closed.html', message=getattr(status, 'message', 'Site kapalı.'))
+    generator = M3UGenerator()
+    if not generator.selcuksports_streams():
+        flash('Yüklenemiyor.')
+        return render_template('channels.html', channels=[])
+    return render_template('channels.html', channels=generator.get_channels())
+
+@app.route('/admin')
+@admin_required
+def admin_panel():
+    status = SiteStatus.query.first()
+    return render_template('admin.html', status=status)
+
+@app.route('/admin/toggle', methods=['POST'])
+@admin_required
+def toggle_site():
+    status = SiteStatus.query.first()
+    if status:
+        status.is_active = not status.is_active
+        status.message = request.form.get('message', 'Değiştirildi.')
+        db.session.commit()
+    flash('Güncellendi!')
+    return redirect(url_for('admin_panel'))
+
+# HTML Şablonları (Önceki mesajlardan kopyala: home.html, login.html, register.html, channels.html, admin.html, closed.html)
 
 if __name__ == '__main__':
-    app = Flask(__name__)  # Yeniden tanımla
     setup_bot()
     if application:
-        # Polling başlat (yedek)
-        def run_polling():
-            application.run_polling()
-        threading.Thread(target=run_polling, daemon=True).start()
-        # Webhook set et
-        webhook_url = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/webhook"
-        application.bot.set_webhook(webhook_url)
-        app.logger.info(f"Bot başlatıldı: {webhook_url}")
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+        # Polling'i ayrı thread'de başlat
+        def run_bot():
+            app.logger.info("Bot polling başlıyor...")
+            application.run_polling(drop_pending_updates=True)
+        bot_thread = threading.Thread(target=run_bot, daemon=True)
+        bot_thread.start()
+        app.logger.info("Bot thread başlatıldı!")
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=False)
